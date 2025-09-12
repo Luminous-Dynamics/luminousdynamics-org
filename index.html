@@ -6,6 +6,22 @@
     <title>Luminous Dynamics - Consciousness-First Technology</title>
     <meta name="description" content="Building technology that amplifies human awareness. Creator of Luminous Nix, Terra Atlas, and the philosophy of Evolving Resonant Co-creationism.">
     
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://luminousdynamics.org/">
+    <meta property="og:title" content="Luminous Dynamics - Consciousness-First Technology">
+    <meta property="og:description" content="Revolutionary AI-human collaboration building technology that serves consciousness. Natural language NixOS, energy abundance mapping, sacred economics.">
+    <meta property="og:image" content="https://luminousdynamics.org/og-image.png">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://luminousdynamics.org/">
+    <meta property="twitter:title" content="Luminous Dynamics">
+    <meta property="twitter:description" content="Consciousness-first technology through Sacred Trinity development">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🌟</text></svg>">
+    
     <!-- Sacred Design System -->
     <style>
         :root {
@@ -329,17 +345,46 @@
 
         /* Mobile Responsive */
         @media (max-width: 768px) {
+            nav {
+                padding: 1rem;
+            }
+            
             .nav-links {
                 display: none;
             }
             
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
             .project-grid {
                 grid-template-columns: 1fr;
+                gap: 1.5rem;
             }
             
             .trinity-grid {
                 grid-template-columns: 1fr;
             }
+            
+            .cta-buttons {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            
+            footer {
+                padding: 2rem 1rem;
+            }
+        }
+        
+        /* Accessibility */
+        *:focus {
+            outline: 2px solid var(--sacred-gold);
+            outline-offset: 2px;
+        }
+        
+        /* Performance */
+        .project-card {
+            will-change: transform;
         }
     </style>
 </head>
