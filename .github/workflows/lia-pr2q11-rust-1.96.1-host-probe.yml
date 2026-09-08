@@ -1,0 +1,128 @@
+name: LIA PR2Q11 Rust 1.96.1 host probe
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout probe branch
+        uses: actions/checkout@v4
+
+      - name: Install exact Rust 1.96.1 components
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup set profile minimal
+          rustup toolchain install 1.96.1 --component rustfmt --component clippy
+          RUST_BIN="$(dirname "$(rustup which --toolchain 1.96.1 cargo)")"
+          echo "RUST_BIN=$RUST_BIN" >> "$GITHUB_ENV"
+          "$RUST_BIN/rustc" -vV
+          [[ "$("$RUST_BIN/rustc" -vV | sed -n 's/^release: //p')" == "1.96.1" ]]
+
+      - name: Record exact executable identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/lia-pr2q11-host-probe"
+          mkdir -p "$out"
+          python3 - "$RUST_BIN" "$out/HOST_PROBE.json" <<'PY'
+          import hashlib, json, os, pathlib, platform, shutil, subprocess, sys
+          rust_bin=pathlib.Path(sys.argv[1]).resolve(); out=pathlib.Path(sys.argv[2])
+          rust_cmds=["cargo","cargo-clippy","cargo-fmt","clippy-driver","rustc","rustdoc","rustfmt"]
+          version_args={
+            "rustc":["-vV"], "rustdoc":["-Vv"], "cargo":["-Vv"],
+            "rustfmt":["--version"], "cargo-fmt":["fmt","--version"],
+            "clippy-driver":["--version"], "cargo-clippy":["clippy","--version"],
+          }
+          def sha(p): return "sha256:"+hashlib.sha256(p.read_bytes()).hexdigest()
+          def rec(label,p,args):
+            p=pathlib.Path(p).resolve()
+            if p.is_symlink() or not p.is_file(): raise SystemExit(f"not regular: {label}: {p}")
+            v=subprocess.check_output([str(p),*args], text=True, stderr=subprocess.STDOUT).strip()
+            return {"path":str(p),"sha256":sha(p),"size":p.stat().st_size,"version":v}
+          components={}
+          for c in rust_cmds:
+            p=(rust_bin/c).resolve()
+            if not p.is_file(): raise SystemExit(f"missing exact Rust component: {p}")
+            components[c]=rec(c,p,version_args[c])
+          helpers={}
+          for label,cmd,args in [
+            ("linker_driver","cc",["--version"]),
+            ("qualification_python",sys.executable,["--version"]),
+            ("sandbox_mount","mount",["--version"]),
+            ("sandbox_unshare","unshare",["--version"]),
+          ]:
+            p=pathlib.Path(cmd if os.path.isabs(cmd) else shutil.which(cmd) or "").resolve()
+            helpers[label]=rec(label,p,args)
+          vv=components["rustc"]["version"]
+          fields={k:v for k,v in (line.split(": ",1) for line in vv.splitlines() if ": " in line)}
+          if fields.get("release")!="1.96.1": raise SystemExit(f"wrong rust release: {fields.get('release')}")
+          sysroot=subprocess.check_output([str(rust_bin/'rustc'),"--print","sysroot"],text=True).strip()
+          data={
+            "schema":"lia.pr2q11-ci-host-probe.v1",
+            "claim":"supplementary host/toolchain observation; NOT qualification evidence",
+            "expected_protocol_root":"sha256:6b4859e5b4184d466a7a6673b6d5e3a76fc4272442bf5c57b7afd29a53ae56cc",
+            "expected_semantic_root":"sha256:f05f62ea6b9fcf2f648abc523388943b03338d6d16be9760bd74f9cff7098447",
+            "expected_implementation_root":"sha256:6a93ed541fed500fd298acc7328fe55498f1e0774088dc6a9f8486cc70743c9b",
+            "runner_os":platform.platform(),"machine":platform.machine(),"sysroot":sysroot,
+            "rustc_fields":fields,"components":components,"host_components":helpers,
+          }
+          out.write_text(json.dumps(data,indent=2,sort_keys=True)+"\n")
+          PY
+          sha256sum "$out/HOST_PROBE.json" | tee "$out/HOST_PROBE.sha256"
+
+      - name: Probe PR2Q11 namespace primitive
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/lia-pr2q11-host-probe"
+          set +e
+          unshare --user --map-root-user --mount --net --pid --ipc --uts --fork bash -ceu '
+            echo "uid=$(id -u) gid=$(id -g)"
+            echo "user=$(readlink /proc/self/ns/user)"
+            echo "mnt=$(readlink /proc/self/ns/mnt)"
+            echo "net=$(readlink /proc/self/ns/net)"
+            echo "pid=$(readlink /proc/self/ns/pid)"
+            echo "ipc=$(readlink /proc/self/ns/ipc)"
+            echo "uts=$(readlink /proc/self/ns/uts)"
+            python3 - <<"PY"
+          import socket
+          s=socket.socket(); s.settimeout(0.5)
+          print("connect_ex=",s.connect_ex(("192.0.2.1",9)))
+          PY
+          ' >"$out/NAMESPACE_PROBE.txt" 2>&1
+          rc=$?
+          set -e
+          echo "$rc" > "$out/NAMESPACE_PROBE.exit"
+          cat "$out/NAMESPACE_PROBE.txt"
+          if [[ $rc -eq 0 ]]; then
+            echo 'NAMESPACE_PRIMITIVE=PASS' | tee "$out/NAMESPACE_PROBE.result"
+          else
+            echo 'NAMESPACE_PRIMITIVE=FAIL' | tee "$out/NAMESPACE_PROBE.result"
+          fi
+
+      - name: Create probe closure
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/lia-pr2q11-host-probe"
+          (cd "$out" && find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
+          cat "$out/SHA256SUMS"
+
+      - name: Upload host probe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lia-pr2q11-rust-1.96.1-host-probe
+          path: ${{ runner.temp }}/lia-pr2q11-host-probe
+          if-no-files-found: error
+          retention-days: 14
