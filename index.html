@@ -388,6 +388,18 @@
         .project-card {
             will-change: transform;
         }
+
+        /* Respect system accessibility preferences. */
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                scroll-behavior: auto !important;
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -635,7 +647,11 @@
             particles.push(new Particle());
         }
         
+        let animationFrameId = null;
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
         function animate() {
+            if (!ctx || reducedMotion.matches) return;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
             particles.forEach(particle => {
@@ -658,11 +674,33 @@
                 });
             });
             
-            requestAnimationFrame(animate);
+            animationFrameId = requestAnimationFrame(animate);
         }
-        
-        animate();
-        
+
+        function startAnimation() {
+            if (ctx && !reducedMotion.matches && animationFrameId === null) {
+                canvas.hidden = false;
+                animate();
+            }
+        }
+
+        function stopAnimation() {
+            if (animationFrameId !== null) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            canvas.hidden = true;
+            if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        if (ctx && !reducedMotion.matches) startAnimation();
+        else stopAnimation();
+
+        reducedMotion.addEventListener('change', event => {
+            if (event.matches) stopAnimation();
+            else startAnimation();
+        });
+
         window.addEventListener('resize', () => {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
